@@ -1,18 +1,11 @@
 """Training data managemenet"""
 
-from typing import NamedTuple
-
 import pandas as pd
 
 import numpy as np
 import jax.numpy as jnp
 
-class Item(NamedTuple):
-    shop_id: int
-    item_id: int
-    data: jnp.ndarray #array of length 33 - start (or start_shop)
-    start: int #start of life of item, if no item data => start of shop life
-    stop: int #stop of life of shop
+from .lgt_model import Item
 
 def build_data(dd):
     sales = pd.read_csv(dd + 'sales_train.csv', parse_dates=['date'])
@@ -82,15 +75,17 @@ def build_data(dd):
         if not np.isnan(dates).all():
             array[dates] = cnt
         return jnp.array(array[int(start):int(stop)+1])
-    y = all_data.apply(
-        lambda row: Item(
+    def _make_item(row):
+        data = _make_data(row['item_cnt_day'], row['date_block_num'], row['item_minblock'], row['shop_minblock'], row['shop_maxblock'])
+        return Item(
             shop_id=row['shop_id'],
             item_id=row['item_id'],
-            data=_make_data(row['item_cnt_day'], row['date_block_num'], row['item_minblock'], row['shop_minblock'], row['shop_maxblock']),
+            data=data,
             start=row['shop_minblock'] if np.isnan(row['item_minblock']) else row['item_minblock'],
-            stop=row['shop_maxblock']
-        ),
-        axis=1
-    ).to_list()
+            stop=row['shop_maxblock'],
+            level=np.nanmean(data),
+            trend=np.nanmean(data)
+        )
+    y = all_data.apply(_make_item, axis=1).to_list()
 
     return y, test, item_means, item_stds, shop_means, shop_stds
